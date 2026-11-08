@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#121d17">
+<title>Fernwatch · A woodland field guide</title>
+<style>
+:root{color-scheme:dark;--paper:#f2ead3;--muted:#aeb9a7;--gold:#eac488;--line:#38473a}
+*{box-sizing:border-box}body{margin:0;background:#121d17;color:var(--paper);font:15px/1.5 system-ui,sans-serif}
+main{width:min(1260px,100% - 48px);margin:auto;padding:30px 0 22px}
+header{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:16px}
+.brand{display:flex;gap:10px;align-items:center;font:700 21px Georgia,serif}.mark{color:var(--gold);font-size:24px}
+.kicker,.tag,.count,.number{font:600 11px/1.5 ui-monospace,monospace;text-transform:uppercase;letter-spacing:.16em}
+.kicker,.number{color:var(--gold)}.tag{color:var(--muted)}
+.intro{padding:25px 0 22px}h1,h2{font-family:Georgia,serif;font-weight:400;margin:0}h1{font-size:clamp(39px,6vw,73px);line-height:1.06;letter-spacing:-.05em;margin:3px 0 9px}
+h1 em{color:var(--gold);font-weight:400}.intro p{margin:0;color:var(--muted)}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 278px;gap:16px}
+.scene{position:relative;min-height:470px;height:clamp(470px,58vh,660px);overflow:hidden;border:1px solid #52604c;border-radius:13px;background:#344d36;touch-action:pan-y}
+.scene:focus-visible{outline:2px solid var(--gold);outline-offset:4px}.scene.scoping{cursor:none}
+canvas{width:100%;height:100%;display:block}.badge,.hint{position:absolute;pointer-events:none;background:#112018ec;border:1px solid #82937a60;border-radius:6px;padding:8px 11px}
+.badge{top:14px;left:14px;color:#ece1be}.hint{bottom:14px;left:14px;right:auto;color:#e8e7d5;font-size:12px}
+.journal{border:1px solid var(--line);background:#19271e;border-radius:13px;padding:18px;display:flex;flex-direction:column}
+.journal h2{font-size:29px;margin:3px 0 4px}.count{color:var(--muted)}
+progress{width:100%;height:6px;appearance:none;margin:12px 0 10px;border:0;border-radius:10px;overflow:hidden}
+progress::-webkit-progress-bar{background:#354439}progress::-webkit-progress-value{background:var(--gold)}progress::-moz-progress-bar{background:var(--gold)}
+ol{list-style:none;padding:0;margin:0 0 12px}.entry{display:grid;grid-template-columns:34px 1fr;gap:9px;align-items:center;border-bottom:1px solid var(--line);min-height:57px;padding:7px 0}
+.icon{width:33px;height:33px;display:grid;place-items:center;border:1px solid #52604c;border-radius:50%;color:var(--gold);font-size:16px}
+.entry strong{display:block;font:16px Georgia,serif}.entry small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+button{margin-top:auto;background:transparent;border:1px solid #52604c;color:var(--paper);border-radius:6px;padding:8px 12px;cursor:pointer;font:inherit}
+button:hover,button:focus-visible{border-color:var(--gold)}.status{min-height:20px;color:var(--muted);font-size:12px;margin:12px 0 0}
+@media(max-width:760px){main{width:calc(100% - 28px);padding-top:17px}.layout{grid-template-columns:1fr}.scene{height:58vh;min-height:350px}.journal{padding:14px}ol{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}.intro{padding:19px 0}.tag{font-size:9px}}
+</style>
+</head>
+<body>
+<main>
+<header><div class="brand"><span class="mark" aria-hidden="true">◈</span> Fernwatch</div><span class="tag">Woodland field station</span></header>
+<section class="intro">
+<div class="kicker">Field excursion 01 · The woodland</div>
+<h1>Eyes on the <em>canopy.</em></h1>
+<p>Sweep the forest with your scope. Click a bird to add it to your field journal.</p>
+</section>
+<div class="layout">
+<div class="scene" id="scene" tabindex="0" role="group" aria-label="Woodland search area" aria-describedby="controls">
+<canvas id="view" aria-hidden="true"></canvas>
+<div class="badge tag">● &nbsp; Fernwood clearing</div>
+<div class="hint" id="controls">Mouse to aim · Click to spot · Arrow keys + Enter · Tap on touch</div>
+</div>
+<aside class="journal" aria-label="Field journal">
+<div class="kicker">Sightings log</div><h2>Field journal</h2>
+<div id="count" class="count"></div><progress id="progress" value="0" max="5" aria-label="Birds spotted"></progress>
+<ol id="entries"></ol><button id="reset" type="button">↻ &nbsp; Reset sightings</button>
+</aside>
+</div>
+<p id="status" class="status" role="status">Look along the branches and near the forest floor.</p>
+</main>
+<script>
+const scene = document.querySelector('#scene');
+const view = document.querySelector('#view');
+const ctx = view.getContext('2d');
+const backdrop = document.createElement('canvas');
+const forest = backdrop.getContext('2d');
+const birds = [
+  {name:'European robin', note:'Orange breast', x:.18, y:.61, color:'#99593c', chest:'#f19755', cap:'#694b36', turn:1},
+  {name:'Eurasian blue tit', note:'Blue crown, yellow belly', x:.39, y:.31, color:'#729b9b', chest:'#e3c766', cap:'#436b9f', turn:-1},
+  {name:'Great spotted woodpecker', note:'Black and white with red under the tail', x:.72, y:.40, color:'#29292b', chest:'#eee6d2', cap:'#232726', turn:-1},
+  {name:'Eurasian jay', note:'Pink-brown with a blue wing patch', x:.86, y:.60, color:'#ae8165', chest:'#ddae91', cap:'#b79a83', turn:1},
+  {name:'Eurasian wren', note:'Small brown bird with a cocked tail', x:.53, y:.78, color:'#8e5936', chest:'#bb9164', cap:'#9d704d', turn:1}
+];
+const found = new Set();
+let width, height, density, birdSize;
+let aim = {x:.5,y:.5,active:false};
+let touchAim = false;
+let message = '';
+
+function ellipse(g,x,y,rx,ry,angle,color) {
+  g.fillStyle = color;
+  g.beginPath(); g.ellipse(x,y,rx,ry,angle,0,Math.PI*2); g.fill();
+}
+function stroke(g,points,color,lineWidth) {
+  g.strokeStyle=color; g.lineWidth=lineWidth; g.lineCap='round'; g.lineJoin='round';
+  g.beginPath(); g.moveTo(...points[0]); points.slice(1).forEach(point=>g.lineTo(...point)); g.stroke();
+}
+function drawBird(g,bird,x,y,size) {
+  g.save(); g.translate(x,y); g.scale(size*bird.turn,size);
+  const wren = bird.name.endsWith('wren');
+  const woodpecker = bird.name.endsWith('woodpecker');
+  stroke(g,[[-3,5],[-4,10],[-7,11]],'#453427',1);
+  stroke(g,[[3,5],[3,10],[1,11]],'#453427',1);
+  stroke(g,[[-5,2],[-15,wren ? -9 : 7]],bird.color,4);
+  ellipse(g,-1,0,9,6.5,-.24,bird.chest);
+  ellipse(g,-4,-1,7,4.1,-.34,bird.color);
+  if(woodpecker) {
+    ellipse(g,-5,1,3,1.5,-.35,'#faf0d9');
+    ellipse(g,-8,5,3,2,.1,'#d84f43');
+  }
+  if(bird.name.endsWith('jay')) ellipse(g,-6,0,3.7,1.5,-.35,'#65a9d0');
+  ellipse(g,5,-5,5.3,4.9,.2,bird.cap);
+  if(bird.name.endsWith('tit') || woodpecker) ellipse(g,6,-4,3.4,2.1,.1,'#f2eddb');
+  g.fillStyle='#d6b17c';g.beginPath();g.moveTo(9,-6);g.lineTo(woodpecker?16:13,-4);g.lineTo(9,-3);g.fill();
+  ellipse(g,7,-6,1.2,1.2,0,'#171b18');ellipse(g,7.3,-6.3,.4,.4,0,'#fff3d7');
+  g.restore();
+}
+
+function paintForest() {
+  forest.setTransform(density,0,0,density,0,0);
+  const g=forest, w=width, h=height;
+  let seed=21967;
+  const random=()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);
+  const sky=g.createLinearGradient(0,0,0,h);
+  ['#283f32','#8f9c69','#52674a','#233d30'].forEach((c,i)=>sky.addColorStop(i/3,c));
+  g.fillStyle=sky;g.fillRect(0,0,w,h);
+  const light=g.createRadialGradient(w*.56,h*.19,0,w*.56,h*.19,w*.61);
+  light.addColorStop(0,'#fff1a5aa');light.addColorStop(.38,'#d6da9260');light.addColorStop(1,'#d6da9200');
+  g.fillStyle=light;g.fillRect(0,0,w,h);
+  for(let layer=0;layer<4;layer++) {
+    const colors=['#6d8061','#526e52','#395942','#294735'];
+    const leafColors=['#a2a771','#82955f','#59764d','#375a3f'];
+    for(let i=0;i<17-layer*3;i++) {
+      const x=random()*w, bottom=h*(.58+layer*.10+random()*.1);
+      const top=(random()-.32)*h*.7, bend=(random()-.5)*w*.12;
+      const trunk=(2+random()*5)*(layer+1)*Math.max(.68,w/900);
+      stroke(g,[[x,bottom],[x+bend*.38,h*.39],[x+bend,top]],colors[layer],trunk);
+      for(let j=0;j<3;j++) {
+        const y=h*(.10+j*.11+random()*.09), b=(random()-.5)*w*.24;
+        stroke(g,[[x+bend*.5,y+h*.09],[x+bend*.5+b*.68,y],[x+bend*.5+b,y-h*.02]],colors[layer],trunk*.33);
+        for(let k=0;k<10;k++) {
+          const lx=x+bend*.5+b+(random()-.5)*w*.12, ly=y+(random()-.5)*h*.14;
+          ellipse(g,lx,ly,4+random()*w*.043,3+random()*h*.026,random(),leafColors[layer]+['38','55','7a'][k%3]);
+        }
+      }
+    }
+  }
+  for(let i=0;i<1450;i++) {
+    const x=random()*w,y=h*(.68+random()*.32), scale=(y/h-.62)*16;
+    ellipse(g,x,y,1+random()*scale,.6+random()*scale*.34,random(),['#4c704c','#263f30','#739053','#a9a46c','#172e27'][i%5]+'99');
+  }
+  for(const side of [0,1]) {
+    const x=w*(side?.965:.035), bend=w*(side?-.05:.06);
+    const bark=g.createLinearGradient(x-w*.045,0,x+w*.045,0);
+    bark.addColorStop(0,'#102b24');bark.addColorStop(.52,'#3e4b34');bark.addColorStop(1,'#1b3528');
+    g.fillStyle=bark;g.beginPath();
+    g.moveTo(x-w*.064,h);g.quadraticCurveTo(x+bend,h*.48,x+bend*.45-w*.025,0);
+    g.lineTo(x+bend*.45+w*.018,0);g.quadraticCurveTo(x+bend+w*.04,h*.51,x+w*.055,h);g.fill();
+    for(let i=0;i<34;i++) {
+      const y=random()*h, offset=(random()-.5)*w*.042;
+      const bx=x+bend*(.45+.53*Math.sin(y/h*Math.PI))+offset;
+      stroke(g,[[bx,y],[bx-2,y+10+random()*25]],i%2?'#9d9d633a':'#132a246b',1+random()*3);
+    }
+  }
+  for(const [index,bird] of birds.entries()) {
+    const x=bird.x*w,y=bird.y*h+birdSize*11;
+    const origin=[.08,.26,.81,.95,.37][index]*w;
+    const direction=Math.sign(x-origin);
+    const perch=[[origin,y+h*.075],[x-(x-origin)*.48,y+h*.019],[x,y],[x+direction*w*.049,y-h*.014]];
+    stroke(g,perch,'#243929',birdSize*(index===4?9:6));
+    stroke(g,perch.map(([px,py])=>[px,py-1]),'#72784d',birdSize*1.5);
+    drawBird(g,bird,x,bird.y*h,birdSize);
+  }
+  for(let i=0;i<120;i++){
+    const x=random()*w,y=h*(.88+random()*.12), reach=7+random()*31;
+    stroke(g,[[x,y],[x+(random()-.5)*14,y-reach]],['#395743','#638553','#213e34'][i%3]+'bb',1+random()*2);
+  }
+  const shade=g.createRadialGradient(w*.52,h*.44,h*.14,w*.52,h*.44,Math.hypot(w,h)*.59);
+  shade.addColorStop(0,'#0a181000');shade.addColorStop(1,'#071810a0');
+  g.fillStyle=shade;g.fillRect(0,0,w,h);
+}
+function render() {
+  ctx.setTransform(density,0,0,density,0,0);
+  ctx.drawImage(backdrop,0,0,width,height);
+  if(!aim.active) return;
+  const x=aim.x*width,y=aim.y*height,r=Math.min(87,width*.20), zoom=1.8;
+  ctx.fillStyle='#07160e56';ctx.fillRect(0,0,width,height);
+  ctx.save();ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.clip();
+  ctx.drawImage(backdrop,x*(1-zoom),y*(1-zoom),width*zoom,height*zoom);
+  ctx.restore();
+  const locked=birdAtAim();
+  ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.strokeStyle='#14251c';ctx.lineWidth=8;ctx.stroke();
+  ctx.strokeStyle=locked?'#ffdc89':'#e7dec0';ctx.lineWidth=2;ctx.stroke();
+  for(let i=0;i<4;i++){
+    const dx=Math.cos(i*Math.PI/2),dy=Math.sin(i*Math.PI/2);
+    stroke(ctx,[[x+dx*(r-13),y+dy*(r-13)],[x+dx*(r-3),y+dy*(r-3)]],ctx.strokeStyle,1);
+  }
+  ellipse(ctx,x,y,2,2,0,locked?'#ffdc89':'#f2ead3');
+}
+function resize() {
+  const rect=scene.getBoundingClientRect();
+  width=scene.clientWidth;height=scene.clientHeight;
+  if(!rect.width || !width || !height) return;
+  density=Math.min(window.devicePixelRatio||1,2);
+  birdSize=Math.max(.72,Math.min(width/850,1.15));
+  view.width=backdrop.width=Math.round(width*density);
+  view.height=backdrop.height=Math.round(height*density);
+  paintForest();render();
+}
+function birdAtAim() {
+  return birds.find(bird=>Math.hypot((bird.x-aim.x)*width,(bird.y-aim.y)*height)<=(touchAim?22:15));
+}
+function updateJournal() {
+  document.querySelector('#count').textContent=found.size+' / '+birds.length+' spotted';
+  document.querySelector('#progress').value=found.size;
+  document.querySelector('#entries').replaceChildren(...birds.map((bird,index)=>{
+    const entry=document.createElement('li');
+    entry.className='entry';
+    const known=found.has(bird);
+    entry.innerHTML='<span class="icon" aria-hidden="true">'+(known?'✓':'·')+'</span><div><strong>'+
+      (known?bird.name:'Sighting '+String(index+1).padStart(2,'0'))+'</strong><small>'+
+      (known?bird.note:'Undiscovered')+'</small></div>';
+    return entry;
+  }));
+  document.querySelector('#status').textContent=message||'Look along the branches and near the forest floor.';
+}
+function spot() {
+  const bird=birdAtAim();
+  if(!bird) message='No bird at the crosshair. Keep scanning.';
+  else if(found.has(bird)) message=bird.name+' is already in your journal.';
+  else {
+    found.add(bird);
+    message=found.size===birds.length?'You spotted all five birds! Your field journal is complete.':bird.name+' added to your field journal.';
+  }
+  updateJournal();render();
+}
+function point(event) {
+  const rect=view.getBoundingClientRect();
+  aim={x:(event.clientX-rect.left)/rect.width,y:(event.clientY-rect.top)/rect.height,active:true};
+  touchAim=event.pointerType==='touch';
+  scene.classList.toggle('scoping',!touchAim);
+  render();
+}
+scene.addEventListener('pointermove',event=>{if(event.pointerType!=='touch')point(event);});
+scene.addEventListener('pointerleave',event=>{
+  if(event.pointerType==='touch')return;
+  aim.active=false;scene.classList.remove('scoping');render();
+});
+scene.addEventListener('pointerup',event=>{if(event.button===0){point(event);spot();}});
+scene.addEventListener('keydown',event=>{
+  const moves={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]};
+  const move=moves[event.key];
+  if(!move && event.key!=='Enter' && event.key!==' ')return;
+  event.preventDefault();touchAim=false;aim.active=true;
+  if(move) {
+    aim.x=Math.min(.99,Math.max(.01,aim.x+move[0]*.017));
+    aim.y=Math.min(.99,Math.max(.01,aim.y+move[1]*.017));
+    render();
+  } else spot();
+});
+scene.addEventListener('blur',()=>{aim.active=false;scene.classList.remove('scoping');render();});
+document.querySelector('#reset').addEventListener('click',()=>{
+  found.clear();message='';aim={x:.5,y:.5,active:false};updateJournal();render();
+});
+updateJournal();
+new ResizeObserver(resize).observe(scene);
+</script>
+</body>
+</html>
